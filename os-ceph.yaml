@@ -1,0 +1,424 @@
+# Please refer to the OpenStack Charms Deployment Guide for more information.
+# https://docs.openstack.org/project-deploy-guide/charm-deployment-guide
+#
+# NOTE: Please review the value for the configuration option
+#       `bridge-interface-mappings` for the `ovn-chassis` charm (see `data-port` variable).
+#       Refer to the [Open Virtual Network (OVN)](https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-ovn.html)
+#       section of the [OpenStack Charms Deployment Guide](https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/)
+#       for more information.
+name: openstack-base
+bases: ubuntu@22.04
+series: &series jammy
+variables:
+  openstack-origin: &openstack-origin distro
+  openstack-charm-channel: &openstack-charm-channel 2023.2/stable
+  ceph-charm-channel: &ceph-charm-channel quincy/stable
+  magnum-charm-channel: &magnum-charm-channel latest/edge
+  ovn-charm-channel: &ovn-charm-channel 23.09/stable
+  mysql-charm-channel: &mysql-charm-channel 8.0/stable
+  data-port: &data-port br-ex:eth0
+  osd-devices: &osd-devices /dev/sda
+  expected-osd-count: &expected-osd-count 1
+  expected-mon-count: &expected-mon-count 1
+machines:
+  '0':
+    constraints: tags=juju-openstack
+  '1':
+    constraints: tags=juju-openstack
+  '2':
+    constraints: tags=juju-openstack-no-storage
+relations:
+- - nova-compute:amqp
+  - rabbitmq-server:amqp
+- - nova-cloud-controller:identity-service
+  - keystone:identity-service
+- - glance:identity-service
+  - keystone:identity-service
+- - neutron-api:identity-service
+  - keystone:identity-service
+- - neutron-api:amqp
+  - rabbitmq-server:amqp
+- - glance:amqp
+  - rabbitmq-server:amqp
+- - cinder-ceph:storage-backend
+  - cinder:storage-backend
+- - ceph-mon:client
+  - nova-compute:ceph
+- - nova-compute:ceph-access
+  - cinder-ceph:ceph-access
+- - ceph-mon:client
+  - cinder-ceph:ceph
+- - ceph-mon:client
+  - glance:ceph
+- - ceph-osd:mon
+  - ceph-mon:osd
+- - ceph-radosgw:mon
+  - ceph-mon:radosgw
+- - ceph-radosgw:identity-service
+  - keystone:identity-service
+- - nova-cloud-controller:image-service
+  - glance:image-service
+- - nova-compute:image-service
+  - glance:image-service
+- - nova-cloud-controller:cloud-compute
+  - nova-compute:cloud-compute
+- - nova-cloud-controller:amqp
+  - rabbitmq-server:amqp
+- - openstack-dashboard:identity-service
+  - keystone:identity-service
+- - nova-cloud-controller:neutron-api
+  - neutron-api:neutron-api
+- - ntp:juju-info
+  - nova-compute:juju-info
+- - placement:identity-service
+  - keystone:identity-service
+- - placement:placement
+  - nova-cloud-controller:placement
+- - keystone:shared-db
+  - keystone-mysql-router:shared-db
+- - glance:shared-db
+  - glance-mysql-router:shared-db
+- - nova-cloud-controller:shared-db
+  - nova-mysql-router:shared-db
+- - nova-compute:nova-vgpu
+  - nova-compute-nvidia-vgpu:nova-vgpu
+- - neutron-api:shared-db
+  - neutron-mysql-router:shared-db
+- - openstack-dashboard:shared-db
+  - dashboard-mysql-router:shared-db
+- - placement:shared-db
+  - placement-mysql-router:shared-db
+- - vault:shared-db
+  - vault-mysql-router:shared-db
+- - keystone-mysql-router:db-router
+  - mysql-innodb-cluster:db-router
+- - nova-mysql-router:db-router
+  - mysql-innodb-cluster:db-router
+- - glance-mysql-router:db-router
+  - mysql-innodb-cluster:db-router
+- - neutron-mysql-router:db-router
+  - mysql-innodb-cluster:db-router
+- - dashboard-mysql-router:db-router
+  - mysql-innodb-cluster:db-router
+- - placement-mysql-router:db-router
+  - mysql-innodb-cluster:db-router
+- - vault-mysql-router:db-router
+  - mysql-innodb-cluster:db-router
+- - neutron-api-plugin-ovn:neutron-plugin
+  - neutron-api:neutron-plugin-api-subordinate
+- - ovn-central:certificates
+  - vault:certificates
+- - ovn-central:ovsdb-cms
+  - neutron-api-plugin-ovn:ovsdb-cms
+- - neutron-api:certificates
+  - vault:certificates
+- - ovn-chassis:nova-compute
+  - nova-compute:neutron-plugin
+- - ovn-chassis:certificates
+  - vault:certificates
+- - ovn-chassis:ovsdb
+  - ovn-central:ovsdb
+- - openstack-dashboard:dashboard-plugin
+  - magnum-dashboard:dashboard
+- - magnum:identity-service
+  - keystone:identity-service
+- - magnum:shared-db
+  - magnum-mysql-router:shared-db
+- - magnum-mysql-router:db-router
+  - mysql-innodb-cluster:db-router
+- - magnum:amqp
+  - rabbitmq-server:amqp
+- - vault:certificates
+  - magnum:certificates
+
+# Vault Certificate
+- - vault:certificates
+  - neutron-api-plugin-ovn:certificates
+- - vault:certificates
+  - ceph-radosgw:certificates
+- - vault:certificates
+  - glance:certificates
+- - vault:certificates
+  - keystone:certificates
+- - vault:certificates
+  - nova-cloud-controller:certificates
+- - vault:certificates
+  - openstack-dashboard:certificates
+- - vault:certificates
+  - placement:certificates
+- - vault:certificates
+  - mysql-innodb-cluster:certificates
+- - vault:certificates
+  - magnum-dashboard:certificates
+
+# Octavia
+- - vault:certificates
+  - octavia:certificates
+- - octavia:amqp
+  - rabbitmq-server:amqp
+- - octavia:identity-service
+  - keystone:identity-service
+- - octavia:neutron-api
+  - neutron-api:neutron-load-balancer
+- - octavia:shared-db
+  - octavia-mysql-router:shared-db
+- - octavia-mysql-router:db-router
+  - mysql-innodb-cluster:db-router
+- - ovn-chassis-octavia:ovsdb-subordinate
+  - octavia:ovsdb-subordinate
+- - ovn-chassis-octavia:certificates
+  - vault:certificates
+- - ovn-chassis-octavia:ovsdb
+  - ovn-central:ovsdb
+- - ovn-central:ovsdb-cms
+  - octavia:ovsdb-cms
+- - openstack-dashboard:dashboard-plugin
+  - octavia-dashboard:dashboard
+- - octavia-dashboard:certificates
+  - vault:certificates
+- - glance-simplestreams-sync:identity-service
+  - keystone:identity-service
+- - glance-simplestreams-sync:certificates
+  - vault:certificates
+- - glance-simplestreams-sync:juju-info
+  - octavia-diskimage-retrofit:juju-info
+- - keystone:identity-credentials
+  - octavia-diskimage-retrofit:identity-credentials
+applications:
+  ceph-mon:
+    charm: ch:ceph-mon
+    channel: *ceph-charm-channel
+    num_units: 2
+    options:
+      expected-osd-count: *expected-osd-count
+      monitor-count: *expected-mon-count
+      source: *openstack-origin
+    to:
+    - lxd:0
+    - lxd:1
+  ceph-osd:
+    charm: ch:ceph-osd
+    channel: *ceph-charm-channel
+    num_units: 2
+    options:
+      osd-devices: *osd-devices
+      source: *openstack-origin
+    to:
+    - '0'
+    - '1'
+  ceph-radosgw:
+    charm: ch:ceph-radosgw
+    channel: *ceph-charm-channel
+    num_units: 1
+    options:
+      source: *openstack-origin
+    to:
+    - lxd:0
+  cinder-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+  cinder:
+    charm: ch:cinder
+    channel: *openstack-charm-channel
+    num_units: 1
+    options:
+      block-device: None
+      glance-api-version: 2
+      openstack-origin: *openstack-origin
+    to:
+    - lxd:1
+  cinder-ceph:
+    charm: ch:cinder-ceph
+    channel: *openstack-charm-channel
+  glance-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+  glance:
+    charm: ch:glance
+    channel: *openstack-charm-channel
+    num_units: 1
+    options:
+      openstack-origin: *openstack-origin
+    to:
+    - 'lxd:2'
+  keystone-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+  keystone:
+    charm: ch:keystone
+    channel: *openstack-charm-channel
+    num_units: 1
+    to:
+    - 'lxd:0'
+  neutron-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+  neutron-api-plugin-ovn:
+    charm: ch:neutron-api-plugin-ovn
+    channel: *openstack-charm-channel
+  neutron-api:
+    charm: ch:neutron-api
+    channel: *openstack-charm-channel
+    num_units: 1
+    options:
+      neutron-security-groups: true
+      flat-network-providers: physnet1
+      enable-ml2-port-security: true
+      openstack-origin: *openstack-origin
+    to:
+    - 'lxd:1'
+  placement-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+  placement:
+    charm: ch:placement
+    channel: *openstack-charm-channel
+    num_units: 1
+    options:
+      openstack-origin: *openstack-origin
+    to:
+    - 'lxd:2'
+  nova-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+  nova-cloud-controller:
+    charm: ch:nova-cloud-controller
+    channel: *openstack-charm-channel
+    num_units: 1
+    options:
+      network-manager: Neutron
+      console-access-protocol: novnc
+      openstack-origin: *openstack-origin
+    to:
+    - 'lxd:0'
+  nova-compute:
+    charm: ch:nova-compute
+    channel: *openstack-charm-channel
+    num_units: 3
+    options:
+      config-flags: default_ephemeral_format=ext4
+      enable-live-migration: true
+      enable-resize: true
+      migration-auth-type: ssh
+      virt-type: kvm
+      openstack-origin: *openstack-origin
+    to:
+    - '0'
+    - '1'
+    - '2'
+  nova-compute-nvidia-vgpu:
+    charm: ch:nova-compute-nvidia-vgpu
+    channel: *openstack-charm-channel
+  ntp:
+    charm: ch:ntp
+    num_units: 0
+  dashboard-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+  openstack-dashboard:
+    charm: ch:openstack-dashboard
+    channel: *openstack-charm-channel
+    num_units: 1
+    options:
+      openstack-origin: *openstack-origin
+    to:
+    - 'lxd:1'
+  rabbitmq-server:
+    charm: ch:rabbitmq-server
+    channel: 3.9/stable
+    num_units: 1
+    to:
+    - 'lxd:2'
+  mysql-innodb-cluster:
+    charm: ch:mysql-innodb-cluster
+    channel: *mysql-charm-channel
+    num_units: 3
+    to:
+    - 'lxd:0'
+    - 'lxd:1'
+    - 'lxd:2'
+  ovn-central:
+    charm: ch:ovn-central
+    channel: *ovn-charm-channel
+    num_units: 3
+    options:
+      source: *openstack-origin
+    to:
+    - 'lxd:0'
+    - 'lxd:1'
+    - 'lxd:2'
+  ovn-chassis:
+    charm: ch:ovn-chassis
+    channel: *ovn-charm-channel
+    # Please update the `bridge-interface-mappings` to values suitable for the
+    # hardware used in your deployment. See the referenced documentation at the
+    # top of this file.
+    options:
+      ovn-bridge-mappings: physnet1:br-ex
+      bridge-interface-mappings: *data-port
+  vault-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+  vault:
+    charm: ch:vault
+    channel: 1.8/stable
+    num_units: 1
+    to:
+    - 'lxd:0'
+  ovn-chassis-octavia:
+    charm: ch:ovn-chassis
+    channel: *ovn-charm-channel
+  octavia-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+  octavia-dashboard:
+    charm: ch:octavia-dashboard
+    channel: *openstack-charm-channel
+  octavia:
+    charm: ch:octavia
+    channel: *openstack-charm-channel
+    # TODO: 証明書が適当
+    options:
+      loadbalancer-topology: ACTIVE_STANDBY
+      lb-mgmt-issuing-cacert: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURkekNDQWwrZ0F3SUJBZ0lVRGpqd1d5aWhUUkJYZ2grUFRQdUljMkhHWngwd0RRWUpLb1pJaHZjTkFRRUwKQlFBd1N6RUxNQWtHQTFVRUJoTUNTbEF4RGpBTUJnTlZCQWdNQlZSdmEzbHZNUXd3Q2dZRFZRUUtEQU5QY21jeApIakFjQmdOVkJBTU1GVzl3Wlc1emRHRmpheTV2Y3k1cGJuUmxjbTVoYkRBZUZ3MHlOREV4TURRd05qRXhNRE5hCkZ3MHlOVEV4TURRd05qRXhNRE5hTUVzeEN6QUpCZ05WQkFZVEFrcFFNUTR3REFZRFZRUUlEQVZVYjJ0NWJ6RU0KTUFvR0ExVUVDZ3dEVDNKbk1SNHdIQVlEVlFRRERCVnZjR1Z1YzNSaFkyc3ViM011YVc1MFpYSnVZV3d3Z2dFaQpNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUUNlditOcTZNTlhvbGdhR2dLSUJJcDVMSGtyCldFcGhwVkgvc3dyT0FOWlJPTzhMUTZLa2RIbWZsd21iMEZpMmdNck5OWnU3L0xyTFo3QUhpRmJHaERKSUlhNlcKK0dYTDdzcGd5OTVPdUdQeEt0RkJFQ2pJMjRDenRFd1FIc0tuZEd6SEh5M2podTI0Z2hNbUkzcFpmRnUzWmJ5Rwp2MmtIcEZiNUFscVQ0akl3K3JzcXpvVVhlaHo1dXB0emRZSGFLelhFOVFidHhWTjhGNnkxUHpqYXZYRXlDTVRoCmxIcW9MNUIySjdwcUsyRU80QkRUd0QrUVk1RlFkK3hZUkp6QzhtTUtaZlhhUjRMWWtYa2RncjJ4MkN2YkRXb3EKbU85S3crN2hnd0pIK0pqSzBUdTlUVVgwZHZsRysyR3NmZVgyQ0wzczZXSXE0ZlNFZ2ZrM3JMd3ZacVVaQWdNQgpBQUdqVXpCUk1CMEdBMVVkRGdRV0JCUWZtemdOUkZCOEVDTndlcDFHMXIva2k2QU5aakFmQmdOVkhTTUVHREFXCmdCUWZtemdOUkZCOEVDTndlcDFHMXIva2k2QU5aakFQQmdOVkhSTUJBZjhFQlRBREFRSC9NQTBHQ1NxR1NJYjMKRFFFQkN3VUFBNElCQVFBU0h3QWk4M2ZQRmRmT2NVaC9ZZTFQQk9tbGJxcGdlNkZZU1h5K0preTlXV0tGT3VNTApSbnZnM3BDQmNrYktHUXJzelFXUUZUQXRGa0FsTVNnUmhFYXk5YktraUdreUJpaXFtb3RVYVNpc3F6d1lnMTl4ClRQVmxXVFdKNWY5WlE5R0x5emxiV05oQ2p3anlpWkFxQTRvTmxCM284a2RGb3VPQjhwckNZMm9odE1ISGpNR1QKcXZyQnlGMzhKRHJVeVAzYUhZQ1phOGxiV1NvT3pnRkNSY2wrN28yS2hoUk1pWkhJQlVneGJFTHpUSFZtby9mMwo2cTk0RlRwU3pDQkJad2FGaGgxaWJ0NFhpMnlrMjIva2YraU9GUXRjQjZPNUVZS0Q5Rnp1dXBOWTgvOURmVzE3CkxITzZGUTBva1dtSDZDSWlkV2pMd0tIVWhEQU5Tc1lNRWc4MQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+      lb-mgmt-issuing-ca-private-key: LS0tLS1CRUdJTiBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQpNSUlGTFRCWEJna3Foa2lHOXcwQkJRMHdTakFwQmdrcWhraUc5dzBCQlF3d0hBUUlzb29RWDlnaHBBSUNBZ2dBCk1Bd0dDQ3FHU0liM0RRSUpCUUF3SFFZSllJWklBV1VEQkFFcUJCRCt3YVdRRjlTM3ptTzhCZDllZE9UYkJJSUUKME1ISVIvZzFqNWlZeUxnUFRYVCt4SHNmemlUQkNWdUs4M1B4NllqWU9rUkt5dVh5RnRPR3p1cDEzKzZmbnhrRwp6MHRjblB0aWJZSm1OTmx4QkN6NFZPbk9mQXNNRXV0MUR3UTZ5QWVSYmtUT0krdk8xY29lUCtQL0ZmOTFqRzZECi9jYjBGOGpmblptNXBHU2Q4aGc5NXZJUzlSVkZpRlZ0RkRtRW5kNHpNSVRhcnIwenF4ZFZacWxXa0ZSTEZXZVIKOEgrdFpmR3F0dDNFWjFoNFBpYXBSMjhFOFNzR0pLTE9uQWU0ZUpkQmI3MDhGaDU2bmhwL1hVQmVnZ3N1czdKVQp1R3p3TGlYQWpVR0g3bE9FdU5zcUhwMVpKYUZPaUw5cmIvUjFGN00zdjVONDNYRDlPWU9FaEd6Nmd4cndVZVgwCjJWb1ZOdVhUVkVMS2JpZ1R1YjB2OE01UEkzUmVhZ0NiTFF6ZHhVRUloNWJSODdFbHlFRU5sM0pyaWRSMUJtTVoKSzNZakdQZ3NiWUtxbUZaREIySWF6QXZUMm1qWTFub0YybVpFMlRSNko3L2VTY0lZY05uVzRrN0R1SnRKRFlEOApBRXh3OUE3b1pUVlZSTDZLWGJUay9QTmxscnhWWGc1Z0t6cUN3MHFHdUhwd1plWTkzb0lzUndFYW5zNjZSZnBMCjk2WDdEYlBLUzBzU2E0MEJ1dDd6L2YySU5VaWdudkx5ZGxJTUx0MDBRZGI3MkpVSFl0Vm1STEJja3VvWHM2bjQKSG1XVXBNak0rMGQxZDVJNE9QbndiVlFwZEZibmZlQTczamZXRE9UQmhvR2liZDlFdHJVckdqR1VvVWRjYmROeAp4b05hc0JDTWYvOG1CMjA1cnVPZVFVajN5dWxaTTlmY216THdvY2dJRVNYUFpoUi9tb3NHQ3hlUnI1QUc3dDRuCkd0cWg1T2c1R0VzZ1l5djFLNzBYakFzM0o1SUxUbHRLSlVPcndtTExZeWF4ZzZNbmM1anl4VFMrdExtNGpUbzUKNUVuR0RpMS9vc2xrMWJ2cHFjSE1pQThMNzdRVU5HU09OODhtdk9idnFLMlVDRktZWm5yQlpGSWovdEdnbkc5WgpkamNMMzErdUtmWm1UNmxoS09lMEhoOWhKN3ZwUUsxRVlhNDN6cFdCcVhmbERCRVNPZmhEOG9hUlJvcW9vYmFHCjBwZkNzWDEwZlNOeTRVRzZsbUtQOXFyK1h1TWQ5S293aks1ajNjUmVIU09qbHZ2amhybXpRNHRucnh1VVVHaWcKaFFQRkJNT2JTdXNEWWdrc2RwaTYxTENPaCsrTDhMK21jZlVNRTRxSzhEWlFuWm9jbjU2NGZwcE1RWElIUUhRdgpUUGp3UC9qTTcyU2E1d3Z1anZFTGI3V1BDQzhmQStaMTA3Z05ROHhRKzc1dFNsN3RNNCsxTFU2Z0lrKzVOL0gyCitZcGVzaEpCZ042eVlwRHMyQmREZ2tMY295RCtjWnFBZ1c4NzI2MWFldlkrSDEyc0M1amZDMGZGQXJ2ZlVoTG0KS3RYUHFucmtYdTNkRXRHUVc5RVRraEpkVDhlMXo5SEFhaGJmQ0tiODN1NEFBT3NyRHFkVXluOUNKMGdWbDNkeQpZUkZYdzhFb09jbVc1Y1cyN25Pa2xmWUJHRDRTdVM4VzlkSUd6MXlmTzFZbFhoQkE2ZnlXYkNZRDNvODB1TFYvCmpCOURaNmMweXN5QkdVcFI4SHVXYVIzRzc2dno5M3BUN0ZtVmc2UEFNN01hTFNHSENuN1cyRHdMZDVtNUNkR08KMDBhL3VxT2xoUGtORlFPOS9tYVg0UXc2Vk1FN1RBVDJaczlJd256dGRYTHlYaElWL3NrRUg0cWgyME4vMWhESwpDUWszakJ1RTFnalptd0dsS3F6T1FqbEcwZ1Z2VVBWeEMvdGxLZjdiMnF4Z0VHZkl4WDViaGhuOGdwLzRJb2psCm1XV2FCVkNrVXhpeVVTaWp1UVM4Q0Izd1FvQUtzL3BUOENQcmxUb1hVQkl1S3Q4cC96TEg5V21wTnd4TktiK3AKY0NWanRPbUpRSUNvdzErcTF4S2hpZzFtbE15c2tnRUFXcE8zVXJTd0IzT0NlTk5aRnFXRlZvYkdiZ3BncVNxegoyOHpNcm84MHNEQjNma1hSc3p0ejFKMHNMa2J5bzhOdFNGbENMMEV1MGxnaQotLS0tLUVORCBFTkNSWVBURUQgUFJJVkFURSBLRVktLS0tLQo=
+      lb-mgmt-issuing-ca-key-passphrase: foobar
+      lb-mgmt-controller-cacert: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURkekNDQWwrZ0F3SUJBZ0lVZmZlSFAyZVhJcDA0SVJSTDhRbnNQNEtBLzBzd0RRWUpLb1pJaHZjTkFRRUwKQlFBd1N6RUxNQWtHQTFVRUJoTUNTbEF4RGpBTUJnTlZCQWdNQlZSdmEzbHZNUXd3Q2dZRFZRUUtEQU5QY21jeApIakFjQmdOVkJBTU1GVzl3Wlc1emRHRmpheTV2Y3k1cGJuUmxjbTVoYkRBZUZ3MHlOREV4TURRd05qRXhNRE5hCkZ3MHlOVEV4TURRd05qRXhNRE5hTUVzeEN6QUpCZ05WQkFZVEFrcFFNUTR3REFZRFZRUUlEQVZVYjJ0NWJ6RU0KTUFvR0ExVUVDZ3dEVDNKbk1SNHdIQVlEVlFRRERCVnZjR1Z1YzNSaFkyc3ViM011YVc1MFpYSnVZV3d3Z2dFaQpNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURIcE5BVGFtb3NhK2grc0lvaVdJT1d4YWZDClBVRnA2WWlxTnl3SUVKOW5UVWhGWmp3N3p4Y2s0T2poRmZSMUhkeXNqV0NETzN4OFQzRUsrL3BCMVJTc3BXVVEKK2d3L05UL0tmdWtqeWhPeU9XK1Uyc2pibGsybnBmTEs5RjhRcUROR2c4MzJOM3NFWkphMzZwTm5jK3N2TmhpMQoxTTJiQ042ZWZFVmhLZW50WTArMVFHcmhYKzJwbEg0cnpiSkV6bGtiV3ZkdDdpcUJ1eWM2N2M3ODVVSmE4b2oyClRnYnlRRXdTV2QxcWJhRVNCRW9zc0tycFpDMFcxRlV1clU0WDB0aVNMOSszZElRNHV2RFYzelVjbVVObG4zMkEKc2xLcXB3ZDNTQWhJY2M3SkJWaWo1OE9BMlYvNVJLbnJGSkxqaCs1ZzAvUUNWc1RwV3NpUkhMblUwUzAxQWdNQgpBQUdqVXpCUk1CMEdBMVVkRGdRV0JCUkNSRDdRNTRxT0o2VU1UQjFQcXkrYVV0YVlWakFmQmdOVkhTTUVHREFXCmdCUkNSRDdRNTRxT0o2VU1UQjFQcXkrYVV0YVlWakFQQmdOVkhSTUJBZjhFQlRBREFRSC9NQTBHQ1NxR1NJYjMKRFFFQkN3VUFBNElCQVFCc25HcVYvaTVaNU5kNy9iMGhIVm9aMVBoWU1XeGxVaUx0NFVkQXh4bU9FMzAzNGtPQgpabmRTK3BHRnJRSDkrSVNWeWFPaFF2YWZ0R0lSeDlUV1BhVTJuSDJBMThYL2FkMnFOWGdySysrTS9oTzQ3eHY3CmdDVkhaNzRWV01NZGdHZ2tOQmRWcDBZSXZHUERHK0pYbm55QmtMOW1GOG50cmNYbGFLRmljcTFhWXFhbnloU20KNVd4RkJDQXVadm5DK2xhMUhGT3hDRlloVnFCTzlIWE5oQURUSWVuTTNDTzV6c3VnUGVZSExIWDZyMlUvQ3ppRwpZQlpGY1R2a1U0RkVGdlhhMFVYK052V0w3UkUxZ1dKMFUwaUViU0VBSlQ0dXQ4N0Urb2FOelQ5WGFJUzJmZGRLCk9LaitieUpCTjFsckdCVUlHS3BWeE1qUVIzUG9oM1dzRkgxdQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+      lb-mgmt-controller-cert: Q2VydGlmaWNhdGU6CiAgICBEYXRhOgogICAgICAgIFZlcnNpb246IDMgKDB4MikKICAgICAgICBTZXJpYWwgTnVtYmVyOgogICAgICAgICAgICAxZDoyODpjZjplMjo2NDozNjo4YTpiOTowMzoxMjphNDoyMTo2MjozMTo4OTo5ZDpjNzozZTowZTo5ZAogICAgICAgIFNpZ25hdHVyZSBBbGdvcml0aG06IHNoYTI1NldpdGhSU0FFbmNyeXB0aW9uCiAgICAgICAgSXNzdWVyOiBDPUpQLCBTVD1Ub2t5bywgTz1PcmcsIENOPW9wZW5zdGFjay5vcy5pbnRlcm5hbAogICAgICAgIFZhbGlkaXR5CiAgICAgICAgICAgIE5vdCBCZWZvcmU6IE5vdiAgNCAwNjoxMTowMyAyMDI0IEdNVAogICAgICAgICAgICBOb3QgQWZ0ZXIgOiBOb3YgIDQgMDY6MTE6MDMgMjAyNSBHTVQKICAgICAgICBTdWJqZWN0OiBDPUpQLCBTVD1Ub2t5bywgTz1PcmcsIENOPW9wZW5zdGFjay5vcy5pbnRlcm5hbAogICAgICAgIFN1YmplY3QgUHVibGljIEtleSBJbmZvOgogICAgICAgICAgICBQdWJsaWMgS2V5IEFsZ29yaXRobTogcnNhRW5jcnlwdGlvbgogICAgICAgICAgICAgICAgUHVibGljLUtleTogKDIwNDggYml0KQogICAgICAgICAgICAgICAgTW9kdWx1czoKICAgICAgICAgICAgICAgICAgICAwMDphOTo1Zjo5OTozNDoxZjplMTpiNzo2NDo0YjoyZTo2YjphNDoyODo5MjoKICAgICAgICAgICAgICAgICAgICA3NTo3Mjo4NzpjNTowMDoyOToyNDpkMDowMjpjZDo1YTplNjoyOTplMTo4YToKICAgICAgICAgICAgICAgICAgICBlMDowYTo1MzplNjo1NzphNToxZjo3YzoyNDoyYzphZDo1NDo3YTpkZjpkZToKICAgICAgICAgICAgICAgICAgICBiNDpmYjo1Yzo1MjozYzozNzpiODpkMzo1Yjo3MDowYTpmNDoxMjoyYzo2MjoKICAgICAgICAgICAgICAgICAgICBmYzpmZjphZjpjZjo3OTpjMjoxNDpiNzo1OTowMzpjOToyNzo2MjoxODplYzoKICAgICAgICAgICAgICAgICAgICA1NDo4ODplNzpjMTplMjo3YTpmZToxOToyMDo3ZTplNDozMDpkNzo2Zjo5NDoKICAgICAgICAgICAgICAgICAgICBhODozMjozZTo1NDpjMzo2YTozYTo1YjpkZDplODoyMjpkODphNToyMjo1NToKICAgICAgICAgICAgICAgICAgICBlYzplYjo4NTpiNDplNzpkZTo3NDozYzo4ZDowMzo1MDo0MTphMzoxYjo4OToKICAgICAgICAgICAgICAgICAgICAzOTowOTowZjo1Njo2Mjo1YTowZjpmODoxZTozMzplMTo2NDpjODpjZjo0OToKICAgICAgICAgICAgICAgICAgICA5ODpmZDo2OTpmMDo4NjpiZjpiYzowMTo3ZjpmNjo5ZTo0ZTpjMzo5MzpmNDoKICAgICAgICAgICAgICAgICAgICAxYzplNjo2MDoxNDo2ZDoxYzpmZjozYTo4MzowZDo5Mzo4NDpmMTpkNTo2ZDoKICAgICAgICAgICAgICAgICAgICA2NzpkZjoyMDo2ODphYTpkZjo4Yzo3NTowZTpmMTo5MDoyNToxOTpjYzo1ZToKICAgICAgICAgICAgICAgICAgICA1Zjo3ZDphNTplNzplNDo0MjpiNjozOTo2NDoxNTplZjo3Yzo5MjphMzo0OToKICAgICAgICAgICAgICAgICAgICA1ZjoyZDphNjpkYzowZjplYzo4OTphMToxNTozNTo0Njo3YzphYTo5Mjo4MzoKICAgICAgICAgICAgICAgICAgICA0YjowMzpjYzo4Mzo0OTo0OTpjYTphYzozMDpiZTplNDpmNTphODo4MzplMToKICAgICAgICAgICAgICAgICAgICAyMzowMDpjMjpkODo4Yzo0ZTplYTo4NTozNTpmOTphYjowMjo4MzozZToxZjoKICAgICAgICAgICAgICAgICAgICAwMTphNTphYTowODplYjowMTo3MTo0ZjplMjo2Mjo4NDpkYTphYTpmODoxNzoKICAgICAgICAgICAgICAgICAgICA0NTo5ZgogICAgICAgICAgICAgICAgRXhwb25lbnQ6IDY1NTM3ICgweDEwMDAxKQogICAgICAgIFg1MDl2MyBleHRlbnNpb25zOgogICAgICAgICAgICBYNTA5djMgQmFzaWMgQ29uc3RyYWludHM6IAogICAgICAgICAgICAgICAgQ0E6RkFMU0UKICAgICAgICAgICAgWDUwOXYzIFN1YmplY3QgS2V5IElkZW50aWZpZXI6IAogICAgICAgICAgICAgICAgMkI6REU6MjE6RkI6QkY6RkY6RDY6NDc6RDI6RDM6NkU6NTk6NTY6M0M6N0Q6QTU6RDk6RUM6QUM6RTUKICAgICAgICAgICAgWDUwOXYzIEF1dGhvcml0eSBLZXkgSWRlbnRpZmllcjogCiAgICAgICAgICAgICAgICA0Mjo0NDozRTpEMDpFNzo4QTo4RToyNzpBNTowQzo0QzoxRDo0RjpBQjoyRjo5QTo1MjpENjo5ODo1NgogICAgU2lnbmF0dXJlIEFsZ29yaXRobTogc2hhMjU2V2l0aFJTQUVuY3J5cHRpb24KICAgIFNpZ25hdHVyZSBWYWx1ZToKICAgICAgICAxYzowYzozZTo3Yjo1OTo3Yjo5ZTo0NzpiNTplOTo2MToyMTo5YjpiNDo0YTozNDphMDo2YToKICAgICAgICA4NDpkZjpmMDo2Njo4OTo1ODpjNTo3ZDo5ODo1OTpiZTowZTpkMTpjODpkNDo4YzpkZDo0NToKICAgICAgICA5MzplNzoyODo1ZjoxYzphYjpkZjo0MjplMjozYTo0ODphMzozNToxYTo4Yjo4YjozODo0MzoKICAgICAgICBhMDplYTo4ZToyZjplMTo5MTo4YjphNDo0Yjo0NDpjOTpmNjo1NzphNzowNjpiZjowZjplMzoKICAgICAgICAwOTo0YTozZToyZjpmYjo3ZjphZDo1MTo5OTowNDowODoxNTpmZTozNzo4MjpiNToyZjoyYzoKICAgICAgICA5ZjoxZDphMDpjMDowYzpkMDo0MzpkYjplMTphZTpkMjpkNzozZDplMDo2MzplMjpmNzpjZjoKICAgICAgICA5NTpiMzo1NTowMzo2ODpjNDpmNTplNjphNDphZDo3YzowYjo3ODo4ZTplNDpmYzowMjoxZjoKICAgICAgICBiODo5NzpjYjphZToxNzpkNTozZTpkMzoyOToxZjoxZjowNDphNTpmZjoyZTo3Mzo1YjowYjoKICAgICAgICBmNDowZjo5MDpiNTo4Nzo4MTo2Mjo5MzphYTphYjpmYzo5Yzo1NDoxZjpiYzo4NDpjODo1YToKICAgICAgICA0ODo0NjplMzo4Yjo1NzpmODowYjplZjo5NjowNzowZTo3MTphMjpmZjplZToyMzowMDpmNjoKICAgICAgICAyYTphZjowMjpiZjplMDoyYTo1OTphZDphYTo0NjoxMzo4Mjo2NzpmYTowYzo0MTpiZTphYjoKICAgICAgICA0Zjo4YjoxMzplZDoyODo4ZTpkMTo0ZjoyZjoyMDozYToxYjo0YTo3Mjo1MDpmZTo1NjphNDoKICAgICAgICA4Mzo3NDpjMzpjOTo3YToxZjowNDozMDpjZjo4Yzo0YjpkZDowNTpkNzphODphZTplMTpjNjoKICAgICAgICA3OToyYToxODplZjo4ODozZjoyNjoxOTozODpiYzo4Mzo5YzphOTo0NjpjZDpmYjozMzpjYjoKICAgICAgICAyZDo3ZTpkMTo5YgotLS0tLUJFR0lOIENFUlRJRklDQVRFLS0tLS0KTUlJRGNUQ0NBbG1nQXdJQkFnSVVIU2pQNG1RMmlya0RFcVFoWWpHSm5jYytEcDB3RFFZSktvWklodmNOQVFFTApCUUF3U3pFTE1Ba0dBMVVFQmhNQ1NsQXhEakFNQmdOVkJBZ01CVlJ2YTNsdk1Rd3dDZ1lEVlFRS0RBTlBjbWN4CkhqQWNCZ05WQkFNTUZXOXdaVzV6ZEdGamF5NXZjeTVwYm5SbGNtNWhiREFlRncweU5ERXhNRFF3TmpFeE1ETmEKRncweU5URXhNRFF3TmpFeE1ETmFNRXN4Q3pBSkJnTlZCQVlUQWtwUU1RNHdEQVlEVlFRSURBVlViMnQ1YnpFTQpNQW9HQTFVRUNnd0RUM0puTVI0d0hBWURWUVFEREJWdmNHVnVjM1JoWTJzdWIzTXVhVzUwWlhKdVlXd3dnZ0VpCk1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRQ3BYNWswSCtHM1pFc3VhNlFva25WeWg4VUEKS1NUUUFzMWE1aW5oaXVBS1UrWlhwUjk4SkN5dFZIcmYzclQ3WEZJOE43alRXM0FLOUJJc1l2ei9yODk1d2hTMwpXUVBKSjJJWTdGU0k1OEhpZXY0WklIN2tNTmR2bEtneVBsVERhanBiM2VnaTJLVWlWZXpyaGJUbjNuUThqUU5RClFhTWJpVGtKRDFaaVdnLzRIalBoWk1qUFNaajlhZkNHdjd3QmYvYWVUc09UOUJ6bVlCUnRIUDg2Z3cyVGhQSFYKYldmZklHaXEzNHgxRHZHUUpSbk1YbDk5cGVma1FyWTVaQlh2ZkpLalNWOHRwdHdQN0ltaEZUVkdmS3FTZzBzRAp6SU5KU2Nxc01MN2s5YWlENFNNQXd0aU1UdXFGTmZtckFvTStId0dscWdqckFYRlA0bUtFMnFyNEYwV2ZBZ01CCkFBR2pUVEJMTUFrR0ExVWRFd1FDTUFBd0hRWURWUjBPQkJZRUZDdmVJZnUvLzlaSDB0TnVXVlk4ZmFYWjdLemwKTUI4R0ExVWRJd1FZTUJhQUZFSkVQdERuaW80bnBReE1IVStyTDVwUzFwaFdNQTBHQ1NxR1NJYjNEUUVCQ3dVQQpBNElCQVFBY0RENTdXWHVlUjdYcFlTR2J0RW8wb0dxRTMvQm1pVmpGZlpoWnZnN1J5TlNNM1VXVDV5aGZIS3ZmClF1STZTS00xR291TE9FT2c2bzR2NFpHTHBFdEV5ZlpYcHdhL0QrTUpTajR2KzMrdFVaa0VDQlgrTjRLMUx5eWYKSGFEQUROQkQyK0d1MHRjOTRHUGk5OCtWczFVRGFNVDE1cVN0ZkF0NGp1VDhBaCs0bDh1dUY5VSsweWtmSHdTbAoveTV6V3d2MEQ1QzFoNEZpazZxci9KeFVIN3lFeUZwSVJ1T0xWL2dMNzVZSERuR2kvKzRqQVBZcXJ3Sy80Q3BaCnJhcEdFNEpuK2d4QnZxdFBpeFB0S0k3UlR5OGdPaHRLY2xEK1ZxU0RkTVBKZWg4RU1NK01TOTBGMTZpdTRjWjUKS2hqdmlEOG1HVGk4ZzV5cFJzMzdNOHN0ZnRHYgotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCi0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLQpNSUlFdkFJQkFEQU5CZ2txaGtpRzl3MEJBUUVGQUFTQ0JLWXdnZ1NpQWdFQUFvSUJBUUNwWDVrMEgrRzNaRXN1CmE2UW9rblZ5aDhVQUtTVFFBczFhNWluaGl1QUtVK1pYcFI5OEpDeXRWSHJmM3JUN1hGSThON2pUVzNBSzlCSXMKWXZ6L3I4OTV3aFMzV1FQSkoySVk3RlNJNThIaWV2NFpJSDdrTU5kdmxLZ3lQbFREYWpwYjNlZ2kyS1VpVmV6cgpoYlRuM25ROGpRTlFRYU1iaVRrSkQxWmlXZy80SGpQaFpNalBTWmo5YWZDR3Y3d0JmL2FlVHNPVDlCem1ZQlJ0CkhQODZndzJUaFBIVmJXZmZJR2lxMzR4MUR2R1FKUm5NWGw5OXBlZmtRclk1WkJYdmZKS2pTVjh0cHR3UDdJbWgKRlRWR2ZLcVNnMHNEeklOSlNjcXNNTDdrOWFpRDRTTUF3dGlNVHVxRk5mbXJBb00rSHdHbHFnanJBWEZQNG1LRQoycXI0RjBXZkFnTUJBQUVDZ2dFQUErOG9Qb0pjQStuQWljZ0hYS21weHpRbmptdDFUSkJWKzBWUG41MS9VWFN1Cit2ckpHQ1R1UXA5RGNORVdZa3B3b3BHUWkyOVhhY3lMVXcxeFY1ZkxrQ0NHblY0K1hkdEI3Q0lxSXQ4R1V1Y3kKcytlSmdac1JpTllJMmwrUW9SQ3hReWpuRENJTUJWUVlrSzVQM3daMVFvQ3ZqZ1NSczkrQ2gxclE5MlN6em1BYgo3aVhYMzNaQ0NUZG5ZWC9IQURtRDZHZkM4UGx6QWNySmxuZjVqOVg0N29TUXJTL2FWb1hnc1czYlJuQkFMQmlxCnhwTFJhUkE1QmZLZVZTQk0zbXhYRVo4aEhFczhXWnlablRnOHpwVll4STU0b3BrYml4NWFTdS9ScGpoY2d0dG8KVzU2NVlyVW1naHdHSzl1Q1JITnJmdXhCcXV6YnZyd1hsempsWWVTbEtRS0JnUUMxckgxc0pidDlTSEV1WTQ4VApXRXdqYVhzNE9OVTlSTVVFd2Z6bVVESzA1aWROeldVait1a1d3S0RIRlFidDl6bjBXbzRCdlVvekovWkRmd21LClkvT0ZpL0ZjM2tTRi8xRTB5Q1dpVVF6MGswTkxhSm9VdnBJQzNDdSt6dXlWcC9xY2ZWR3RLRC9wTW9DK1Q4M00KNlN6RkJyYVBRWnJPNzl5L0JCUXY2YmRaYXdLQmdRRHVxdFpEeUJjUG5qY0hOZzY3eXNkZFV4ZTdkMno4UktUUApkR3A5eWNJQjF4czl5YTZMTmRjQXdlRzBuaHI3eGd0SElHa0JZMSs4d2xWeFJ2UXI4YWdva1hnWVNlS2IxeUd5CjJvRURzMUlmcVhSVFdnejhZS3g3MU5rUnlWbHhoU3RsOXFjS210SVhvcjdDb2RJWWhNSWhVZlpWYlAxb09sd3oKTVk1UjZSRU5uUUtCZ0FodURZL1VIR1FPMVhtaWt3UUJ4OTZveVZmdGd5K0pubDYvSlo0R1FLUVdQZUtsVWprZQpMbXlvMlkwRFU4UDlBY3B0M1VNRlpva0RKTEV6RnQwK0VCRzFVYWpPZzMxNFFHdGpraU43QVUvaitXNXBWeVQ1ClJzc3RMalozWVpEOEwydk5nTm01RVdZZnVzdVo1bUhJdkJRVVlLbzdFQlRrR21rZXBsVW0waVFyQW9HQUxXbUkKTjRGOUVkV3k5c1pNYTJNY0tCL0Zaa0JGRm9NaE1QQWZ5eXQycE03L09mU0VKNnpvNmhYNkVsbjdIR2tFZ0ZZawpaTVU1MURyTjh5M2pDL0dCWTZhNlNUVFZ6MzFSeGl4WlhCRGswVzEyMnQxSmwwUDF6ZUlrSTRSQ1pwMUdNcktKCitqU1hRVFFRUkF4eVk0UHZSRlBLSVZzSnBLbG1IYitTS3ZmRDdPa0NnWUJPdkZmeURYTE9jakEvWUJYeDcrWTEKWjIwYXlYZExJZjlCYmR1eWVJRVhCd3hwRVdjWFZ5T01QV3J2NHpMUDcwbWdyQUdUR2l0SWl0VEpvbFB2YVlscgpJUWd4cUQ0WnV1THFDWmRvM0k5T2tCSk5qZndFYS9xTHBzUEhZNUlldkNYSkFRaHRwMmpQVEIvSnlZSzJUTmFCCko5RDJEcitaRVVQakxMelVPUjRFZHc9PQotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg==
+      use-internal-endpoints: true
+      debug: true
+      openstack-origin: *openstack-origin
+    num_units: 1
+    to:
+    - 'lxd:1'
+  glance-simplestreams-sync:
+    charm: ch:glance-simplestreams-sync
+    channel: *openstack-charm-channel
+    options:
+
+    num_units: 1
+    to:
+    - '0'
+  octavia-diskimage-retrofit:
+    charm: ch:octavia-diskimage-retrofit
+    channel: *openstack-charm-channel
+    options:
+      amp-image-tag: 'octavia-amphora'
+  
+  magnum-dashboard:
+    charm: ch:magnum-dashboard
+    channel: *magnum-charm-channel
+
+  magnum-mysql-router:
+    charm: ch:mysql-router
+    channel: *mysql-charm-channel
+
+  magnum:
+    charm: ch:magnum
+    channel: *magnum-charm-channel
+    num_units: 1
+    options:
+      openstack-origin: *openstack-origin
+      debug: true
+    to:
+    - 'lxd:2'

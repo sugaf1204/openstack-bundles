@@ -1,0 +1,5 @@
+credentials:
+  maas:
+    anyuser:
+      auth-type: oauth1
+      maas-oauth: CgjZnCyxfLYg8xbjT7:FkGSYDwTDARrprDUFz:MJ8MxbvQUAADnrKpTxmacMKz4FqHr5fM

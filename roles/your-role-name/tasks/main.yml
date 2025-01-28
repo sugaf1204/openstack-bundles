@@ -1,0 +1,15 @@
+- name: Add CA certificate
+  copy:
+    content: |
+
+    dest: /usr/local/share/ca-certificates/charm-pki-local.crt
+    mode: '0644'
+    owner: root
+    group: root
+  become: true
+
+- name: Update CA certificates
+  command: update-ca-certificates
+  become: true
+
+
